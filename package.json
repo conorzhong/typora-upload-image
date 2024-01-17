@@ -1,6 +1,6 @@
 {
   "name": "typora-upload-image",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "description": "A Tiny tool to upload images to cloud",
   "bin": "dist/cjs/bin/index.js",
   "types": "dist/cjs/index.d.ts",
