@@ -1,7 +1,7 @@
 {
   "name": "typora-upload-image",
   "version": "0.0.1",
-  "description": "",
+  "description": "A Tiny tool to upload images to cloud",
   "bin": "dist/cjs/bin/index.js",
   "types": "dist/cjs/index.d.ts",
   "scripts": {
@@ -27,6 +27,7 @@
   },
   "dependencies": {
     "cos-nodejs-sdk-v5": "^2.12.6",
+    "dayjs": "^1.11.10",
     "yargs": "^17.7.2"
   }
 }

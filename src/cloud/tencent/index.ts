@@ -1,96 +1,116 @@
 import COS from 'cos-nodejs-sdk-v5'
+import dayjs from 'dayjs'
 import { readFile } from 'fs/promises'
 import path from 'path'
 import * as yargs from 'yargs'
 
 export async function register() {
-  yargs.command(
-    'tencent [files..]',
-    'Use tencent cloud to upload a file',
-    {
-      secretId: {
-        description: 'The secret ID',
-        alias: 'i',
-        type: 'string',
-        demandOption: true,
+  yargs
+    .command(
+      'tencent <filePaths..>',
+      'Use tencent cloud to upload files',
+      {
+        secretId: {
+          description: 'The secret ID',
+          alias: 'i',
+          type: 'string',
+          demandOption: true,
+        },
+        secretKey: {
+          description: 'The secret key',
+          alias: 'k',
+          type: 'string',
+          demandOption: true,
+        },
+        bucket: {
+          description: 'The bucket',
+          alias: 'b',
+          type: 'string',
+          demandOption: true,
+        },
+        region: {
+          description: 'The region',
+          alias: 'r',
+          type: 'string',
+          demandOption: true,
+        },
+        renameTimeStamp: {
+          description:
+            'Rename file before upload just like typora. For example, if set to true, a file named "image.jpg" might be renamed to "image-20240117185600000.jpg"',
+          alias: 'rts',
+          type: 'boolean',
+          default: false,
+        },
       },
-      secretKey: {
-        description: 'The secret key',
-        alias: 'k',
-        type: 'string',
-        demandOption: true,
-      },
-      bucket: {
-        description: 'The bucket',
-        alias: 'b',
-        type: 'string',
-        demandOption: true,
-      },
-      region: {
-        description: 'The region',
-        alias: 'r',
-        type: 'string',
-        demandOption: true,
-      },
-      files: {
-        description: 'The file to upload',
-        type: 'array',
-        demandOption: true,
-      },
-      debug: {
-        description: 'Debug',
-        type: 'boolean',
-      },
-    },
-    async function (argv) {
-      if (argv.debug) {
-        console.log(argv)
-      }
-
-      const cos = new COS({
-        SecretId: argv.secretId,
-        SecretKey: argv.secretKey,
-      })
-
-      const urls = await Promise.all(
-        argv.files.map(async (file) => {
-          const key = path.basename(file.toString())
-          const body = await readFile(file.toString())
-
-          return new Promise((resolve, reject) => {
-            cos.putObject(
-              {
-                Bucket: argv.bucket, // 必须
-                Region: argv.region, // 存储桶所在地域，必须字段
-                Key: key, // 必须
-                StorageClass: 'STANDARD',
-                Body: body, // 上传文件对象
-                onProgress: function (progressData) {
-                  if (argv.debug) {
-                    console.log(JSON.stringify(progressData))
-                  }
-                },
-              },
-              function (err, data) {
-                if (err) {
-                  // 处理请求出错
-                  if (argv.debug) {
-                    console.log(err)
-                  }
-                } else {
-                  // 处理请求成功
-                  if (argv.debug) {
-                    console.log(data)
-                  }
-                  resolve(data.Location)
-                }
-              }
-            )
-          })
+      async function (argv) {
+        const cos = new COS({
+          SecretId: argv.secretId,
+          SecretKey: argv.secretKey,
         })
-      )
 
-      urls.map((url) => console.log(url))
+        for (const filePath of argv.filePaths as string[]) {
+          if (typeof filePath === 'string') {
+            const key = await getKey(filePath, argv.renameTimeStamp)
+            if (!(await doesObjectExist(cos, argv.bucket, argv.region, key))) {
+              const body = await readFile(filePath.toString())
+              const { Location: url } = await cos.putObject({
+                Bucket: argv.bucket,
+                Region: argv.region,
+                Key: key,
+                StorageClass: 'STANDARD',
+                Body: body,
+              })
+              console.log(url)
+            } else {
+              throw new Error(`file ${filePath} already exists`)
+            }
+          } else {
+            throw new Error(`filePath ${filePath} is not string`)
+          }
+        }
+      }
+    )
+    .example(
+      '$0 tencent -i xxx -k xxx -b xxx -r xxx --rts ./my/file/path1.png ./my/file/path2.png',
+      'Upload files to tencent cloud after rename them with timestamp'
+    )
+    .help()
+    .parse()
+}
+
+async function doesObjectExist(
+  cos: COS,
+  bucket: string,
+  region: string,
+  key: string
+) {
+  try {
+    const data = await cos.headObject({
+      Bucket: bucket,
+      Region: region,
+      Key: key,
+    })
+    return !!data
+  } catch (error: any) {
+    if (error.statusCode === 404) {
+      return false
+    } else if (error.statusCode === 403) {
+      throw new Error('403')
     }
-  ).argv
+  }
+}
+
+async function getKey(filePath: string, renameTimeStamp: boolean) {
+  if (renameTimeStamp) {
+    await delay(1) // 防止图片重名
+    return `image-${dayjs().format('YYYYMMDDHHmmssSSS')}${path.extname(
+      filePath
+    )}`
+  } else {
+    return path.basename(filePath)
+  }
+}
+
+function delay(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms))
 }
